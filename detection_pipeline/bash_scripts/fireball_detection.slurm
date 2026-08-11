@@ -24,7 +24,7 @@ if [ -z "$MODEL_PATH" ]; then
 fi
 
 
-module load pytorch/2.2.0-rocm5.7.3
+module load pytorch/2.7.1-rocm6.3.3
 
 # Don't load other python modules, it messes with the
 # package versions that pytorch needs...

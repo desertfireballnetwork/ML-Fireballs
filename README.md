@@ -131,6 +131,14 @@ Either
 
 In the following sections, we will refer to images taken from Acacia.
 
+Acacia stores one bucket per day (e.g. `pawsey0639:dfn-l0-20150930`), so pulling a month of data means looping over each day:
+
+```sh
+year=2015
+month=09
+for day in {01..31}; do date="${year}${month}${day}"; rclone copy --transfers 24 pawsey0639:dfn-l0-${date}/  /scratch/$PAWSEY_PROJECT/acacia_JPGs/dfn-l0-$date ; done
+```
+
 <br>
 
 ## Running Jobs
@@ -398,7 +406,7 @@ The following was learned after deciphering https://pawsey.atlassian.net/wiki/sp
 Load the PyTorch module.
 
 ```sh
-module load pytorch/2.2.0-rocm5.7.3
+module load pytorch/2.7.1-rocm6.3.3
 ```
 
 *Note: PyTorch is very important for the entire YOLO object detection part. Even if the `ultralytics` package is not being directly used, running inference on the models requires math to be done by PyTorch.*
