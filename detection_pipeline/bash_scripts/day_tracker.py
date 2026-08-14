@@ -28,6 +28,12 @@ def cmd_is_processed(args: argparse.Namespace) -> None:
     sys.exit(0 if entry and entry.get("status") == "success" else 1)
 
 
+def cmd_list_failed(args: argparse.Namespace) -> None:
+    data = load(Path(args.file))
+    for date in sorted(d for d, e in data.items() if e.get("status") == "failed"):
+        print(date)
+
+
 def cmd_mark(args: argparse.Namespace) -> None:
     path = Path(args.file)
     data = load(path)
@@ -52,6 +58,12 @@ def main() -> None:
     is_processed.add_argument("date")
     is_processed.add_argument("--file", required=True)
     is_processed.set_defaults(func=cmd_is_processed)
+
+    list_failed = subparsers.add_parser(
+        "list-failed", help="print dates with status=failed, one per line, sorted"
+    )
+    list_failed.add_argument("--file", required=True)
+    list_failed.set_defaults(func=cmd_list_failed)
 
     mark = subparsers.add_parser("mark", help="record a run for a date")
     mark.add_argument("date")

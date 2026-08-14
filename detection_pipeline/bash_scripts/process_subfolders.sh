@@ -21,8 +21,8 @@
 
 
 # Check if the correct number of arguments is provided
-if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
-    echo "Usage: $0 <input_folder> <output_folder> <model_path> [save_erroneous]"
+if [ "$#" -lt 3 ] || [ "$#" -gt 5 ]; then
+    echo "Usage: $0 <input_folder> <output_folder> <model_path> [save_erroneous] [time_limit HH:MM:SS]"
     exit 1
 fi
 
@@ -30,6 +30,7 @@ input_folder=$(realpath "$1")
 output_folder=$(realpath "$2")
 model_path=$(realpath "$3")
 save_erroneous="${4:-false}"
+time_limit="${5:-}"
 
 # Check if the input folder exists
 if [ ! -d "$input_folder" ]; then
@@ -67,6 +68,7 @@ for subfolder in "$input_folder"/*; do
             --export=ALL,FOLDER_PATH="$subfolder",OUTPUT_PATH="$output_path",MODEL_PATH="$model_path",SAVE_ERRONEOUS="$save_erroneous" \
             --output="$output_path/slurm-%j-$input_basename-$subfolder_basename.out" \
             --account="$PAWSEY_PROJECT" \
+            ${time_limit:+--time="$time_limit"} \
             "$MYSOFTWARE/ML-Fireballs/detection_pipeline/bash_scripts/fireball_detection.slurm" | awk '{print $4}')
         echo "$input_basename/$subfolder_basename job id: $job_id"
         # Add job ID to dependency list

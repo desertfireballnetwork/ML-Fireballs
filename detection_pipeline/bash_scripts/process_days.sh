@@ -17,9 +17,26 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_MODEL_PATH="$SCRIPT_DIR/../../data/2015-trained-entire-year_differenced-norm-tiles_yolov8s-pt.onnx"
 
+time_limit=""
+args=()
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --time-limit)
+            time_limit="$2"
+            shift 2
+            ;;
+        *)
+            args+=("$1")
+            shift
+            ;;
+    esac
+done
+set -- "${args[@]}"
+
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
-    echo "Usage: $0 <start_date YYYYMMDD> <end_date YYYYMMDD> [model_path]"
+    echo "Usage: $0 [--time-limit HH:MM:SS] <start_date YYYYMMDD> <end_date YYYYMMDD> [model_path]"
     echo "  model_path defaults to $DEFAULT_MODEL_PATH"
+    echo "  --time-limit overrides fireball_detection.slurm's wall time (default 01:00:00)"
     exit 1
 fi
 
@@ -74,8 +91,8 @@ while [ "$current" -le "$end_date" ]; do
         continue
     fi
 
-    echo "+ $SCRIPT_DIR/process_subfolders.sh $day_folder $results_dir $model_path"
-    submit_output=$("$SCRIPT_DIR/process_subfolders.sh" "$day_folder" "$results_dir" "$model_path")
+    echo "+ $SCRIPT_DIR/process_subfolders.sh $day_folder $results_dir $model_path false $time_limit"
+    submit_output=$("$SCRIPT_DIR/process_subfolders.sh" "$day_folder" "$results_dir" "$model_path" false "$time_limit")
     echo "$submit_output"
 
     collate_job_id=$(echo "$submit_output" | grep "collate_detections job id:" | awk '{print $NF}')
