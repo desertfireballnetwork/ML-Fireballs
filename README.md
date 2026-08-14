@@ -18,6 +18,7 @@ Repository of work for [Desert Fireball Network](https://dfn.gfo.rocks/) researc
     - [Processing a Single Folder (i.e a nights worth of images by a single camera)](#processing-a-single-folder-ie-a-nights-worth-of-images-by-a-single-camera)
     - [Processing Multiple Folders (i.e each camera of a given day)](#processing-multiple-folders-ie-each-camera-of-a-given-day)
     - [Example: Processing an Entire Month of Detections](#example-processing-an-entire-month-of-detections)
+    - [Reliability](#reliability)
   - [Useful Setonix Commands](#useful-setonix-commands)
 - [Working on the Project](#working-on-the-project)
   - [Locally / On a Regular Server Like Nectar](#locally--on-a-regular-server-like-nectar)
@@ -243,6 +244,12 @@ done
 ```
 
 Usually takes around an hour to process a month of images.
+
+<br>
+
+### Reliability
+
+As of 2026-08-14, the pipeline has run 5,500+ processing sessions (one per camera per night) and failed to complete on only a single one — even after pushing the wall time out to 4 hours. That night was a near-full moon with cloud patches rolling across the entire sky all night, generating an overwhelming number of false detections. See a timelapse of the night here: [youtube.com/watch?v=fovJcw-sDUM](https://www.youtube.com/watch?v=fovJcw-sDUM).
 
 <br>
 
