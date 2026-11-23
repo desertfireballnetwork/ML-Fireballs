@@ -4,6 +4,8 @@ import multiprocessing as mp
 import os
 import re
 import shutil
+import sys
+import traceback
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -131,7 +133,15 @@ class DetectionWorkerProcess(mp.Process):
             triple: ImagesTriple = self.args.triples_queue.get()
             if triple is None:
                 break
-            self.process_triple(triple)
+            # A failure on one image must not kill the worker: the logger
+            # process waits for every triple index in order, so a missing
+            # index would hang the whole job until its wall time.
+            try:
+                self.process_triple(triple)
+            except Exception:
+                print(f"{self.name}: failed on {triple.current}, skipping it:\n{traceback.format_exc()}", file=sys.stderr, flush=True)
+                logger.error("image_failed", image=triple.current, error=traceback.format_exc())
+                structlog.contextvars.unbind_contextvars("image")
             self.args.detection_log_queue.put((triple.index, "\n".join(self.log_messages)))
             self.log_messages.clear()
             self.args.bar_queue.put(1)
@@ -144,27 +154,44 @@ class DetectionWorkerProcess(mp.Process):
         
         image_current = io.imread(Path(self.args.folder_path, images.current))
 
-        if images.before and images.after:
-            image_before = cv2.imread(Path(self.args.folder_path, images.before), cv2.IMREAD_GRAYSCALE)
-            image_after = cv2.imread(Path(self.args.folder_path, images.after), cv2.IMREAD_GRAYSCALE)
-
-            differenced_image_pair1 = difference_images(image_current, image_before)
-            differenced_image_pair2 = difference_images(image_current, image_after)
-
-            brightness_image_pair1 = np.mean(differenced_image_pair1)
-            brightness_image_pair2 = np.mean(differenced_image_pair2)
-
-            differenced_image = differenced_image_pair1 if brightness_image_pair1 < brightness_image_pair2 else differenced_image_pair2
-
-        else:
-            differenced_image = difference_images(
-                image_current,
-                cv2.imread(
-                    Path(self.args.folder_path, images.before if images.before else images.after),
-                    cv2.IMREAD_GRAYSCALE
-                )
+        # Neighbour images to difference against. cv2.imread applies the EXIF
+        # orientation flag by default but skimage.io.imread (used for the
+        # current image, and by the downstream streak/point-picking tools)
+        # doesn't, so for DSLR images tagged as rotated the two came out
+        # transposed. Ignore EXIF orientation so all three are in raw sensor
+        # orientation. Any neighbour that still can't be read or doesn't match
+        # in size is dropped rather than crashing.
+        neighbours = []
+        for name in (images.before, images.after):
+            if not name:
+                continue
+            neighbour = cv2.imread(
+                Path(self.args.folder_path, name),
+                cv2.IMREAD_GRAYSCALE | cv2.IMREAD_IGNORE_ORIENTATION
             )
-        
+            if neighbour is None:
+                logger.warning("neighbour_unreadable", neighbour=name)
+            elif neighbour.shape[:2] != image_current.shape[:2]:
+                logger.warning(
+                    "neighbour_size_mismatch",
+                    neighbour=name,
+                    neighbour_shape=list(neighbour.shape[:2]),
+                    current_shape=list(image_current.shape[:2])
+                )
+            else:
+                neighbours.append(neighbour)
+
+        if not neighbours:
+            logger.info("image skipped due to no usable before or after image")
+            structlog.contextvars.unbind_contextvars("image")
+            return
+
+        # If both neighbours are usable, keep the darker difference.
+        differenced_image = min(
+            (difference_images(image_current, n) for n in neighbours),
+            key=np.mean
+        )
+
         image_name = images.current.split(".")[0]
 
         detected_tiles = detect_differenced_tiles_norm(differenced_image, self.detector, TILE_BORDER_SIZE)
