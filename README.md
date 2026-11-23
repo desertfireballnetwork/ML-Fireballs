@@ -137,7 +137,7 @@ Acacia stores one bucket per day (e.g. `pawsey0639:dfn-l0-20150930`), so pulling
 ```sh
 year=2015
 month=09
-for day in {01..31}; do date="${year}${month}${day}"; rclone copy --transfers 24 pawsey0639:dfn-l0-${date}/  /scratch/$PAWSEY_PROJECT/acacia_JPGs/dfn-l0-$date ; done
+for day in {01..31}; do date="${year}${month}${day}"; rclone copy --transfers 24 pawsey0639:dfn-l0-${date}/  $MYSCRATCH/ML-fireballs-detection/acacia_JPGs/dfn-l0-$date ; done
 ```
 
 <br>
@@ -147,7 +147,7 @@ for day in {01..31}; do date="${year}${month}${day}"; rclone copy --transfers 24
 We'll refer to this folder structure moving forwards:
 
 ```
-/scratch/$PAWSEY_PROJECT/acacia_JPGs/
+$MYSCRATCH/ML-fireballs-detection/acacia_JPGs/
 ```
 
 ```txt
@@ -178,7 +178,7 @@ The following commands should be run while in the `ML-Fireballs/` folder within 
 
 ### Processing a Single Folder (i.e a nights worth of images by a single camera)
 
-If you want to process a single folder containing images (e.g. `/scratch/$PAWSEY_PROJECT/acacia_JPGS/dfn-l0-20150101/DFNSMALL09`), run:
+If you want to process a single folder containing images (e.g. `$MYSCRATCH/ML-fireballs-detection/acacia_JPGs/dfn-l0-20150101/DFNSMALL09`), run:
 
 ```sh
 ./detection_pipeline/bash_scripts/process_folder <input_folder> <output_folder> <model_path> [save_erroneous]
@@ -186,18 +186,18 @@ If you want to process a single folder containing images (e.g. `/scratch/$PAWSEY
 
 Where
 
-- `input_folder` is the path to the folder containing images (e.g. `/scratch/$PAWSEY_PROJECT/acacia_JPGS/dfn-l0-20150101/DFNSMALL09/`)
-- `output_folder` is the path to where the outputs will be. A subfolder will be created in this output folder (e.g. `$MYSCRATCH`).
+- `input_folder` is the path to the folder containing images (e.g. `$MYSCRATCH/ML-fireballs-detection/acacia_JPGs/dfn-l0-20150101/DFNSMALL09/`)
+- `output_folder` is the path to where the outputs will be. A subfolder will be created in this output folder (e.g. `$MYSCRATCH/ML-fireballs-detection`).
 - `model_path` is the path to the yolo `.onnx` model (e.g. `$MYSOFTWARE/ML-Fireballs/data/2015-trained-entire-year_differenced-norm-tiles_yolov8s-pt.onnx`)
 - `save_erroneous` is an optional argument where if you put `true`, it will save the outputs of all detections, even if they were recognised as erroneous. This is useful for debugging or checking the streak lines afterwards. You can leave this out if you're just wanting to do detections though.
 
 So the final command may look like:
 
 ```sh
-./detection_pipeline/bash_scripts/process_folder /scratch/$PAWSEY_PROJECT/acacia_JPGS/dfn-l0-20150101/DFNSMALL09/ $MYSCRATCH $MYSOFTWARE/ML-Fireballs/data/2015-trained-entire-year_differenced-norm-tiles_yolov8s-pt.onnx
+./detection_pipeline/bash_scripts/process_folder $MYSCRATCH/ML-fireballs-detection/acacia_JPGs/dfn-l0-20150101/DFNSMALL09/ $MYSCRATCH/ML-fireballs-detection $MYSOFTWARE/ML-Fireballs/data/2015-trained-entire-year_differenced-norm-tiles_yolov8s-pt.onnx
 ```
 
-From the above command, a folder `$MYSCRATCH/DFNSMALL09/` will be created containing the outputs of the program.
+From the above command, a folder `$MYSCRATCH/ML-fireballs-detection/DFNSMALL09/` will be created containing the outputs of the program.
 
 Usually takes around 5 to 10 minutes to process a single folder of~1000 images.
 
@@ -205,7 +205,7 @@ Usually takes around 5 to 10 minutes to process a single folder of~1000 images.
 
 ### Processing Multiple Folders (i.e each camera of a given day)
 
-If you want to process a folder containing subfolders of images (e.g. `/scratch/$PAWSEY_PROJECT/acacia_JPGS/dfn-l0-20150101/`), run:
+If you want to process a folder containing subfolders of images (e.g. `$MYSCRATCH/ML-fireballs-detection/acacia_JPGs/dfn-l0-20150101/`), run:
 
 ```sh
 ./detection_pipeline/bash_scripts/process_subfolders <input_folder> <output_folder> <model_path> [save_erroneous]
@@ -216,10 +216,10 @@ See above for argument explanations.
 The final command may look like:
 
 ```sh
-./detection_pipeline/bash_scripts/process_subfolders /scratch/$PAWSEY_PROJECT/acacia_JPGS/dfn-l0-20150101/ $MYSCRATCH $MYSOFTWARE/ML-Fireballs/data/2015-trained-entire-year_differenced-norm-tiles_yolov8s-pt.onnx
+./detection_pipeline/bash_scripts/process_subfolders $MYSCRATCH/ML-fireballs-detection/acacia_JPGs/dfn-l0-20150101/ $MYSCRATCH/ML-fireballs-detection $MYSOFTWARE/ML-Fireballs/data/2015-trained-entire-year_differenced-norm-tiles_yolov8s-pt.onnx
 ```
 
-From the above command, a folder `$MYSCRATCH/dfn-l0-20150101/` will be created containing the outputs of the program.
+From the above command, a folder `$MYSCRATCH/ML-fireballs-detection/dfn-l0-20150101/` will be created containing the outputs of the program.
 
 Usually takes around 5 to 20 minutes to process a days worth of images across ~20 cameras.
 
@@ -232,14 +232,14 @@ Usually takes around 5 to 20 minutes to process a days worth of images across ~2
 If we want to process the folders from January 2015, first make a folder to house all the outputs.
 
 ```sh
-mkdir $MYSCRATCH/dfn-2015-01-candidates/
+mkdir -p $MYSCRATCH/ML-fireballs-detection/dfn-2015-01-candidates/
 ```
 
 The following command will submit jobs to process the folders from January 2015:
 
 ```sh
-find /scratch/$PAWSEY_PROJECT/acacia_JPGs/ -maxdepth 1 -type d -name "*201501*" | sort | while read dir; do
-	./detection_pipeline/bash_scripts/process_subfolders.sh $dir $MYSCRATCH/dfn-2015-01-candidates/ $MYSOFTWARE/ML-Fireballs/data/2015-trained-entire-year_differenced-norm-tiles_yolov8s-pt.onnx
+find $MYSCRATCH/ML-fireballs-detection/acacia_JPGs/ -maxdepth 1 -type d -name "*201501*" | sort | while read dir; do
+	./detection_pipeline/bash_scripts/process_subfolders.sh $dir $MYSCRATCH/ML-fireballs-detection/dfn-2015-01-candidates/ $MYSOFTWARE/ML-Fireballs/data/2015-trained-entire-year_differenced-norm-tiles_yolov8s-pt.onnx
 done
 ```
 
@@ -294,13 +294,13 @@ pawseyAccountBalance -u
 **Find Paths of Cropped Detections**
 
 ```sh
-find $MYSCRATCH/dfn-2015-01-candidates -type f -regex '.*/.*_[0-9]+-[0-9]+-[0-9]+-[0-9]+\.jpg'
+find $MYSCRATCH/ML-fireballs-detection/dfn-2015-01-candidates -type f -regex '.*/.*_[0-9]+-[0-9]+-[0-9]+-[0-9]+\.jpg'
 ```
 
 **Copy Cropped Detections to Folder**
 
 ```sh
-find $MYSCRATCH/dfn-2015-01-candidates -type f -regex '.*/.*_[0-9]+-[0-9]+-[0-9]+-[0-9]+\.jpg' -exec cp {} dfn-2015-01-candidates-cropped/ \;
+find $MYSCRATCH/ML-fireballs-detection/dfn-2015-01-candidates -type f -regex '.*/.*_[0-9]+-[0-9]+-[0-9]+-[0-9]+\.jpg' -exec cp {} dfn-2015-01-candidates-cropped/ \;
 ```
 
 Make sure `dfn-2015-01-candidates-cropped/` exists first!
@@ -308,13 +308,13 @@ Make sure `dfn-2015-01-candidates-cropped/` exists first!
 **Count Images Captured**
 
 ```sh
-find /scratch/$PAWSEY_PROJECT/acacia_JPGs/dfn-l0-201501* -type f | wc -l
+find $MYSCRATCH/ML-fireballs-detection/acacia_JPGs/dfn-l0-201501* -type f | wc -l
 ```
 
 **Count Number of Detections**
 
 ```sh
-for folder in $MYSCRATCH/dfn-2015-01-candidates/dfn-l0-2015*; do
+for folder in $MYSCRATCH/ML-fireballs-detection/dfn-2015-01-candidates/dfn-l0-2015*; do
     if [[ -d "$folder" ]]; then
         json_file="$folder/$(basename "$folder").json"
         if [[ -f "$json_file" ]]; then
@@ -336,7 +336,7 @@ You can swap out `'.final_detections[]'` for
 **Count Number of Images with Detections**
 
 ```sh
-for folder in $MYSCRATCH/dfn-2015-01-candidates/dfn-l0-2015*; do
+for folder in $MYSCRATCH/ML-fireballs-detection/dfn-2015-01-candidates/dfn-l0-2015*; do
     if [[ -d "$folder" ]]; then
         json_file="$folder/$(basename "$folder").json"
         if [[ -f "$json_file" ]]; then
@@ -467,8 +467,7 @@ source .venv/bin/activate
 Install dependencies.
 
 ```sh
-mkdir -p $MYSCRATCH/tmp
-export TMPDIR="$MYSCRATCH/tmp"
+export TMPDIR="$MYSCRATCH/ML-fireballs-detection/tmp"
 mkdir -p "$TMPDIR"
 
 pip install --cache-dir="$TMPDIR" -r requirements.txt
@@ -538,7 +537,7 @@ It's pretty simple from here, just give it the parameters... This is what the `d
 The logs made by the pipeline use the **JSON Lines** format. You can use the `jq` command to view them in a human readable way.
 
 ```sh
-jq . $MYSCRATCH/dfn-2015-01-candidates/dfn-l0-20150101/DFNSMALL09/dfn-l0-20150101_DFNSMALL09.log | less
+jq . $MYSCRATCH/ML-fireballs-detection/dfn-2015-01-candidates/dfn-l0-20150101/DFNSMALL09/dfn-l0-20150101_DFNSMALL09.log | less
 ```
 
 Piping it to `less` makes it navigable. Up and down arrows, page up and page down, `g` to go to the start, `shift + g` to go to the end, `<num> + g` to go that line e.g. to go to line 11, type`11g`. `q` to quit.
@@ -546,7 +545,7 @@ Piping it to `less` makes it navigable. Up and down arrows, page up and page dow
 `jq` works well when parsing through it. For example, to output the final detections by a camera:
 
 ```sh
-jq -r 'select(.final_detections != null) | .final_detections[]' "$MYSCRATCH/dfn-2015-01-candidates/dfn-l0-20150101/DFNSMALL09/dfn-l0-20150101_DFNSMALL09.log"
+jq -r 'select(.final_detections != null) | .final_detections[]' "$MYSCRATCH/ML-fireballs-detection/dfn-2015-01-candidates/dfn-l0-20150101/DFNSMALL09/dfn-l0-20150101_DFNSMALL09.log"
 ```
 
 ## Methodology

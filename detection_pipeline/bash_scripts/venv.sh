@@ -17,8 +17,7 @@ source .venv/bin/activate
 
 echo "installing dependencies"
 
-mkdir -p $MYSCRATCH/tmp
-export TMPDIR="$MYSCRATCH/tmp"
+export TMPDIR="$MYSCRATCH/ML-fireballs-detection/tmp"
 mkdir -p "$TMPDIR"
 
 pip install --cache-dir="$TMPDIR" -r requirements.txt

@@ -7,12 +7,20 @@
 #   - run the detection pipeline on that single night (via process_subfolders.sh)
 #   - wait for the jobs to finish
 #   - push the results to pawsey0639:dfn-snail-ml-fireball/dfn-l0-<date>/
+#   - delete that night's staged images from scratch
 #   - record the date, when it ran, and whether it succeeded, in acacia_dfn-l0_processed_days.json
 #
 # Results are only pushed, and a date is only marked "success", if the
 # collate job for that night completed successfully. Anything else (no data,
 # no camera subfolders, job failure) is recorded as "failed" with a note so
 # it gets retried on a later run.
+#
+# Everything this script stages or writes on scratch lives under
+# $MYSCRATCH/ML-fireballs-detection/:
+#   acacia_JPGs/dfn-l0-<date>/   images pulled from Acacia, deleted once that
+#                                night's jobs have finished (success or not;
+#                                a retry pulls them again)
+#   acacia_dfn-l0_candidates/    detection outputs (kept)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_MODEL_PATH="$SCRIPT_DIR/../../data/2015-trained-entire-year_differenced-norm-tiles_yolov8s-pt.onnx"
@@ -62,8 +70,23 @@ RESULTS_BUCKET="dfn-snail-ml-fireball"
 # rclone inline.
 SRUN_COPY=(srun --partition=copy --time=00:30:00 --ntasks=1 --cpus-per-task=4)
 
-acacia_jpgs_dir="/scratch/$PAWSEY_PROJECT/acacia_JPGs"
-results_dir="$MYSCRATCH/acacia_dfn-l0_candidates"
+work_dir="$MYSCRATCH/ML-fireballs-detection"
+acacia_jpgs_dir="$work_dir/acacia_JPGs"
+results_dir="$work_dir/acacia_dfn-l0_candidates"
+
+# Remove a night's staged images once its jobs are done with them. Guarded so
+# a bad/empty variable can never turn this into an rm of something else.
+remove_day_images() {
+    local dir="$1"
+    case "$dir" in
+        "$acacia_jpgs_dir"/dfn-l0-[0-9]*) ;;
+        *) echo "Refusing to delete unexpected path '$dir'" >&2; return 1 ;;
+    esac
+    if [ -d "$dir" ]; then
+        echo "+ rm -rf $dir"
+        rm -rf -- "$dir"
+    fi
+}
 
 # ---------------------------------------------------------------------------
 # Preflight: make sure the environment is sane before pulling any data or
@@ -152,6 +175,8 @@ EOF
 export SETONIX_REPO_DIR
 preflight_checks || exit 1
 
+mkdir -p "$acacia_jpgs_dir" "$results_dir" || exit 1
+
 current="$start_date"
 while [ "$current" -le "$end_date" ]; do
 
@@ -187,6 +212,7 @@ while [ "$current" -le "$end_date" ]; do
     if [ -z "$collate_job_id" ]; then
         echo "Error: no collate job was submitted for $current (no camera subfolders?), skipping."
         python3 "$TRACKER" mark "$current" --file "$STATE_FILE" --status failed --note "no camera subfolders / no collate job submitted"
+        remove_day_images "$day_folder"
         current=$(date -d "$current +1 day" +%Y%m%d)
         continue
     fi
@@ -202,6 +228,7 @@ while [ "$current" -le "$end_date" ]; do
     if [ "$state" != "COMPLETED" ]; then
         echo "Error: collate job for $current finished with state '$state', not pushing results."
         python3 "$TRACKER" mark "$current" --file "$STATE_FILE" --status failed --note "collate job state: $state"
+        remove_day_images "$day_folder"
         current=$(date -d "$current +1 day" +%Y%m%d)
         continue
     fi
@@ -210,6 +237,7 @@ while [ "$current" -le "$end_date" ]; do
     "${SRUN_COPY[@]}" rclone copy "$results_dir/dfn-l0-$current/" "$RCLONE_REMOTE:$RESULTS_BUCKET/dfn-l0-$current/"
 
     python3 "$TRACKER" mark "$current" --file "$STATE_FILE" --status success
+    remove_day_images "$day_folder"
     echo "=== Done $current ==="
 
     current=$(date -d "$current +1 day" +%Y%m%d)
