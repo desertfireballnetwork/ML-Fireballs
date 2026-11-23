@@ -1,7 +1,10 @@
 #!/bin/bash
 
-echo "loading pytorch module"
-module load pytorch/2.7.1-rocm6.3.3
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/setonix_env.sh"
+
+echo "loading $SETONIX_PAWSEYENV_MODULE $SETONIX_PYTORCH_MODULE"
+load_setonix_modules || exit 1
 
 echo "entering subshell"
 bash << 'EOF'

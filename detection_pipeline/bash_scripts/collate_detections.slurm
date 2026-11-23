@@ -14,14 +14,18 @@ if [ -z "$OUTPUT_PATH" ]; then
 fi
 
 
-module load pytorch/2.7.1-rocm6.3.3
+# Shared module versions (see setonix_env.sh). Fail the job loudly if the
+# modules don't load, instead of running on the system python3.
+source "$MYSOFTWARE/ML-Fireballs/detection_pipeline/bash_scripts/setonix_env.sh" || exit 1
+load_setonix_modules || exit 1
 
 
 bash << 'EOF'
 
 cd $MYSOFTWARE/ML-Fireballs
 
-source .venv/bin/activate
+source .venv/bin/activate || { echo "Error: could not activate .venv (run venv.sh)" >&2; exit 1; }
+python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))' || { echo "Error: wrong python3 ($(command -v python3), $(python3 --version 2>&1)); module/venv broken" >&2; exit 1; }
 
 python3 -m detection_pipeline.core.collate_detections "$OUTPUT_PATH"
 

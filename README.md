@@ -413,7 +413,7 @@ The following was learned after deciphering https://pawsey.atlassian.net/wiki/sp
 Load the PyTorch module.
 
 ```sh
-module load pytorch/2.7.1-rocm6.3.3
+module load pytorch/2.13.0-rocm7.2.4   # version is set in detection_pipeline/bash_scripts/setonix_env.sh
 ```
 
 *Note: PyTorch is very important for the entire YOLO object detection part. Even if the `ultralytics` package is not being directly used, running inference on the models requires math to be done by PyTorch.*

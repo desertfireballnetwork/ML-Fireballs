@@ -65,6 +65,93 @@ SRUN_COPY=(srun --partition=copy --time=00:30:00 --ntasks=1 --cpus-per-task=4)
 acacia_jpgs_dir="/scratch/$PAWSEY_PROJECT/acacia_JPGs"
 results_dir="$MYSCRATCH/acacia_dfn-l0_candidates"
 
+# ---------------------------------------------------------------------------
+# Preflight: make sure the environment is sane before pulling any data or
+# submitting any jobs. Catches e.g. a Setonix software-stack update that
+# breaks the pytorch module, in which case the slurm jobs would otherwise
+# fall back to the system python3.6 and every night would fail.
+# ---------------------------------------------------------------------------
+source "$SCRIPT_DIR/setonix_env.sh"
+
+preflight_checks() {
+    local ok=0
+    fail() { echo "  FAIL: $*" >&2; ok=1; }
+    pass() { echo "  ok:   $*"; }
+
+    echo "=== Preflight checks ==="
+
+    local var
+    for var in PAWSEY_PROJECT MYSCRATCH MYSOFTWARE; do
+        if [ -n "${!var}" ]; then pass "\$$var=${!var}"; else fail "\$$var is not set"; fi
+    done
+
+    local cmd
+    for cmd in python3 sbatch srun squeue sacct rclone realpath; do
+        if command -v "$cmd" >/dev/null 2>&1; then pass "$cmd found"; else fail "'$cmd' not found on PATH"; fi
+    done
+
+    if command -v rclone >/dev/null 2>&1; then
+        if rclone listremotes 2>/dev/null | grep -qx "$RCLONE_REMOTE:"; then
+            pass "rclone remote '$RCLONE_REMOTE' configured"
+        else
+            fail "rclone remote '$RCLONE_REMOTE' is not configured (rclone listremotes)"
+        fi
+    fi
+
+    if python3 "$TRACKER" list-failed --file "$STATE_FILE" >/dev/null; then
+        pass "day tracker can read $STATE_FILE"
+    else
+        fail "day tracker failed on $STATE_FILE"
+    fi
+
+    # The slurm jobs run from $SETONIX_REPO_DIR, not necessarily from this checkout.
+    if [ ! -d "$SETONIX_REPO_DIR" ]; then
+        fail "repo dir $SETONIX_REPO_DIR (used by the slurm jobs) does not exist"
+    elif [ "$(realpath "$SETONIX_REPO_DIR")" != "$(realpath "$SCRIPT_DIR/../..")" ]; then
+        echo "  warn: slurm jobs will run code from $SETONIX_REPO_DIR, not from $(realpath "$SCRIPT_DIR/../..")"
+    fi
+    if [ ! -f "$SETONIX_REPO_DIR/.venv/bin/activate" ]; then
+        fail "no virtualenv at $SETONIX_REPO_DIR/.venv (run venv.sh)"
+    fi
+
+    # Load the modules exactly as the slurm jobs do, in a subshell so this
+    # shell's environment is left untouched, then check the venv's python can
+    # import everything the pipeline needs.
+    echo "  ...  loading ${SETONIX_PAWSEYENV_MODULE:+$SETONIX_PAWSEYENV_MODULE }$SETONIX_PYTORCH_MODULE and test-importing the pipeline (can take a minute)"
+    if (
+        load_setonix_modules || exit 1
+        bash << 'EOF'
+cd "$SETONIX_REPO_DIR" || exit 1
+source .venv/bin/activate || exit 1
+python3 - << 'PY'
+import sys
+print(f"  ok:   python {sys.version.split()[0]} at {sys.executable}")
+if sys.version_info < (3, 8):
+    sys.exit("  FAIL: python is too old; module or venv is broken")
+import torch, onnxruntime
+print(f"  ok:   torch {torch.__version__}, onnxruntime {onnxruntime.__version__}")
+import detection_pipeline.main
+import detection_pipeline.core.collate_detections
+print("  ok:   detection_pipeline imports")
+PY
+EOF
+    ); then
+        pass "module + venv environment"
+    else
+        fail "module/venv environment is broken (see errors above). If the pytorch module changed, update setonix_env.sh and rebuild: rm -rf $SETONIX_REPO_DIR/.venv && $SCRIPT_DIR/venv.sh"
+    fi
+
+    if [ "$ok" -ne 0 ]; then
+        echo "=== Preflight FAILED, not processing anything ===" >&2
+    else
+        echo "=== Preflight passed ==="
+    fi
+    return "$ok"
+}
+
+export SETONIX_REPO_DIR
+preflight_checks || exit 1
+
 current="$start_date"
 while [ "$current" -le "$end_date" ]; do
 
