@@ -58,16 +58,28 @@ fi
 mkdir -p "$output_path"
 echo "Created output folder: $output_path"
 
+# Stagger job start times. If all camera jobs start at the same moment they
+# all load the venv's big shared libraries (onnxruntime) from /software at
+# once, and since the pytorch/2.13.0-rocm7.2.4 stack one of them tends to die
+# with a bus error (exit 135) during "import onnxruntime". --begin makes each
+# job ineligible to start until its offset has passed; waiting in the queue
+# costs no allocation. Set STAGGER_SECONDS=0 to disable.
+STAGGER_SECONDS="${STAGGER_SECONDS:-30}"
+
 # Submit a job for each subfolder and collect job IDs
 job_ids=""
+job_index=0
 for subfolder in "$input_folder"/*; do
     if [ -d "$subfolder" ]; then
         subfolder=$(realpath "$subfolder")
         subfolder_basename=$(basename "$subfolder")
+        begin_offset=$(( job_index * STAGGER_SECONDS ))
+        job_index=$(( job_index + 1 ))
         job_id=$(sbatch \
             --export=ALL,FOLDER_PATH="$subfolder",OUTPUT_PATH="$output_path",MODEL_PATH="$model_path",SAVE_ERRONEOUS="$save_erroneous" \
             --output="$output_path/slurm-%j-$input_basename-$subfolder_basename.out" \
             --account="$PAWSEY_PROJECT" \
+            --begin="now+${begin_offset}" \
             ${time_limit:+--time="$time_limit"} \
             "$MYSOFTWARE/ML-Fireballs/detection_pipeline/bash_scripts/fireball_detection.slurm" | awk '{print $4}')
         echo "$input_basename/$subfolder_basename job id: $job_id"
