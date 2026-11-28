@@ -142,6 +142,13 @@ class DetectionWorkerProcess(mp.Process):
                 print(f"{self.name}: failed on {triple.current}, skipping it:\n{traceback.format_exc()}", file=sys.stderr, flush=True)
                 logger.error("image_failed", image=triple.current, error=traceback.format_exc())
                 structlog.contextvars.unbind_contextvars("image")
+                # Drop any half-written output folder for this image (e.g.
+                # created but no .json yet): get_detections() expects every
+                # image folder to have its .json, and would otherwise crash
+                # the whole job after all images are done.
+                partial_folder = Path(self.args.output_folder, triple.current.split(".")[0])
+                if partial_folder.is_dir():
+                    shutil.rmtree(partial_folder, ignore_errors=True)
             self.args.detection_log_queue.put((triple.index, "\n".join(self.log_messages)))
             self.log_messages.clear()
             self.args.bar_queue.put(1)

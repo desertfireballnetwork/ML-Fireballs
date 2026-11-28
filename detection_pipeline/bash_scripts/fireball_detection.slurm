@@ -52,13 +52,35 @@ python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))' || { echo "Error: w
 # stack of every thread, so the log shows which file/library it died in.
 export PYTHONFAULTHANDLER=1
 
-python3 -m detection_pipeline.main \
-    --folder_path "$FOLDER_PATH" \
-    --output_path "$OUTPUT_PATH" \
-    --model_path "$MODEL_PATH" \
-    --detector ONNX \
-    --processes "$SLURM_CPUS_PER_TASK" \
-    $( [[ "$SAVE_ERRONEOUS" == "true" ]] && echo "--save_erroneous" ) \
-    $( [[ "$NO_OVERWRITE" == "true" ]] && echo "--no_overwrite" )
+# Retry on SIGBUS (exit 135). The intermittent onnxruntime/library import bus
+# error kills the job within seconds, before any work is done, so re-running
+# is cheap and safe (main.py starts the camera's output folder afresh unless
+# --no_overwrite). Only retried if the crash happens within the first
+# BUS_RETRY_WINDOW seconds, so a bus error late in a run is not repeated.
+MAX_ATTEMPTS=2
+BUS_RETRY_WINDOW=300
+attempt=1
+while true; do
+    start=$SECONDS
+    python3 -m detection_pipeline.main \
+        --folder_path "$FOLDER_PATH" \
+        --output_path "$OUTPUT_PATH" \
+        --model_path "$MODEL_PATH" \
+        --detector ONNX \
+        --processes "$SLURM_CPUS_PER_TASK" \
+        $( [[ "$SAVE_ERRONEOUS" == "true" ]] && echo "--save_erroneous" ) \
+        $( [[ "$NO_OVERWRITE" == "true" ]] && echo "--no_overwrite" )
+    status=$?
+    elapsed=$(( SECONDS - start ))
+
+    if [ "$status" -eq 135 ] && [ "$elapsed" -lt "$BUS_RETRY_WINDOW" ] && [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
+        wait_s=$(( 20 + RANDOM % 40 ))
+        echo "Bus error (exit 135) after ${elapsed}s on attempt $attempt/$MAX_ATTEMPTS, retrying in ${wait_s}s" >&2
+        sleep "$wait_s"
+        attempt=$(( attempt + 1 ))
+        continue
+    fi
+    exit "$status"
+done
 
 EOF

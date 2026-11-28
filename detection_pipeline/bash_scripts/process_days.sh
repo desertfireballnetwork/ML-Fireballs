@@ -6,7 +6,9 @@
 #     (via srun on Setonix's "copy" data-mover partition)
 #   - run the detection pipeline on that single night (via process_subfolders.sh)
 #   - wait for the jobs to finish
-#   - push the results to pawsey0639:dfn-snail-ml-fireball/dfn-l0-<date>/
+#   - push the results to the per-year results bucket
+#     pawsey0639:dfn-ml-fireball-detection-results-<YYYY>/dfn-l0-<date>/
+#     (one bucket per year keeps each bucket well under Acacia's 1M-object cap)
 #   - delete that night's staged images from scratch
 #   - record the date, when it ran, and whether it succeeded, in acacia_dfn-l0_processed_days.json
 #
@@ -62,7 +64,10 @@ TRACKER="$SCRIPT_DIR/day_tracker.py"
 touch "$STATE_FILE"
 
 RCLONE_REMOTE="pawsey0639"
-RESULTS_BUCKET="dfn-snail-ml-fireball"
+# Results go to one bucket per year: <prefix><YYYY>/dfn-l0-<YYYYMMDD>/.
+# (Before Nov 2026 everything went to the single bucket dfn-snail-ml-fireball;
+# see migrate_results_to_yearly_buckets.slurm.)
+RESULTS_BUCKET_PREFIX="dfn-ml-fireball-detection-results-"
 
 # Acacia transfers run on Setonix's dedicated data-mover nodes (partition
 # "copy"), not the login node or the "work" compute partition (which has no
@@ -217,8 +222,13 @@ while [ "$current" -le "$end_date" ]; do
         continue
     fi
 
-    echo "+ squeue -j $collate_job_id (polling every 60s until it clears)"
-    while squeue -j "$collate_job_id" -h 2>/dev/null | grep -q .; do
+    # Wait for ALL of this night's jobs (every camera + collate), not just
+    # collate: if one camera job fails, slurm cancels collate immediately
+    # while the other cameras are still running, and deleting the staged
+    # images at that point pulls the files out from under them.
+    all_job_ids=$(echo "$submit_output" | grep " job id:" | awk '{print $NF}' | paste -sd,)
+    echo "+ squeue -j $all_job_ids (polling every 60s until all clear)"
+    while squeue -j "$all_job_ids" -h 2>/dev/null | grep -q .; do
         sleep 60
     done
 
@@ -233,8 +243,22 @@ while [ "$current" -le "$end_date" ]; do
         continue
     fi
 
-    echo "+ srun --partition=copy rclone copy $results_dir/dfn-l0-$current/ $RCLONE_REMOTE:$RESULTS_BUCKET/dfn-l0-$current/"
-    "${SRUN_COPY[@]}" rclone copy "$results_dir/dfn-l0-$current/" "$RCLONE_REMOTE:$RESULTS_BUCKET/dfn-l0-$current/"
+    results_bucket="${RESULTS_BUCKET_PREFIX}${current:0:4}"
+    # Explicit mkdir: creates the year's bucket if it doesn't exist yet (no-op
+    # if it does), rather than relying on rclone copy's implicit bucket
+    # creation, which is skipped if the remote has no_check_bucket set.
+    # Both run inside one srun so it's a single data-mover allocation.
+    echo "+ srun --partition=copy rclone mkdir $RCLONE_REMOTE:$results_bucket && rclone copy $results_dir/dfn-l0-$current/ $RCLONE_REMOTE:$results_bucket/dfn-l0-$current/"
+    if ! "${SRUN_COPY[@]}" bash -c 'rclone mkdir "$1" && rclone copy "$2" "$3"' _ \
+            "$RCLONE_REMOTE:$results_bucket" \
+            "$results_dir/dfn-l0-$current/" \
+            "$RCLONE_REMOTE:$results_bucket/dfn-l0-$current/"; then
+        echo "Error: failed to push results for $current to $RCLONE_REMOTE:$results_bucket, not marking as done."
+        python3 "$TRACKER" mark "$current" --file "$STATE_FILE" --status failed --note "rclone push to $results_bucket failed"
+        remove_day_images "$day_folder"
+        current=$(date -d "$current +1 day" +%Y%m%d)
+        continue
+    fi
 
     python3 "$TRACKER" mark "$current" --file "$STATE_FILE" --status success
     remove_day_images "$day_folder"
