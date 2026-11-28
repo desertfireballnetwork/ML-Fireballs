@@ -17,3 +17,5 @@ object_detection/fireballs/
 *.pt
 runs/
 wandb/
+# Retired review scripts/data, kept locally only
+detections_review/obsolete/
